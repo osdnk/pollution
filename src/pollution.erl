@@ -26,62 +26,50 @@ create_monitor() ->
   {ok, #monitor{}}.
 
 add_station(Monitor, Name, {_, _} = Location) ->
-  NameUsed =
-    case maps:find(Name, Monitor#monitor.stations) of
-      {ok, _} -> true;
-      error -> false
-    end,
-  LocationUsed =
-    case maps:find(Location, Monitor#monitor.locationToName) of
-      {ok, _} -> true;
-      error -> false
-    end,
-
-  case not NameUsed and not LocationUsed of
-    false -> {error, "Station already exists"};
-    true -> {ok, #monitor{
-      locationToName = maps:put(Location, Name, Monitor#monitor.locationToName),
-      stations = maps:put(
-        Name,
-        #station{name = Name, location = Location},
-        Monitor#monitor.stations)}}
-  end;
-
+  NameUsed = find_name(maps:find(Name, Monitor#monitor.stations)),
+  LocationUsed = was_location_used(
+    maps:find(Location, Monitor#monitor.locationToName)),
+  add_station(not NameUsed and not LocationUsed, Monitor, Name, Location);
 add_station(_, _, _) ->
   {error, "Wrong location format"}.
+
+add_station(true, Monitor, Name, Location) ->
+  {ok, #monitor{
+    locationToName = maps:put(Location, Name, Monitor#monitor.locationToName),
+    stations = maps:put(
+      Name,
+      #station{name = Name, location = Location},
+      Monitor#monitor.stations)}};
+add_station(false, _, _, _) ->
+  {error, "Station already exists"}.
+
+find_name({ok, _}) -> true;
+find_name(error) -> false.
+
+was_location_used({ok, _}) -> true;
+was_location_used(error) -> false.
 
 add_value(Monitor, {_, _} = Location, Time, MeasurementType, Value)
   when is_tuple(Time),
   is_atom(MeasurementType) ->
-  case maps:find(Location, Monitor#monitor.locationToName) of
-    {ok, Name} ->
-      {ok, Station} = maps:find(Name, Monitor#monitor.stations),
-      case maps:find({Time, MeasurementType}, Station#station.measurements) of
-        {ok, _} ->
-          {error, "Cannot add another measurement with the same location, time and type"};
-        error ->
-          {ok, add_value_no_check(Monitor, Station, Time, MeasurementType, Value)}
-      end;
-    error ->
-      {error, "Cannot add measurement to a non-existent station"}
-  end;
-
+  add_value(Monitor, Location, Time, MeasurementType, Value,
+    maps:find(Location, Monitor#monitor.locationToName));
 add_value(Monitor, Name, Time, MeasurementType, Value)
   when is_tuple(Time),
   is_atom(MeasurementType) ->
-  case maps:find(Name, Monitor#monitor.stations) of
-    {ok, Station} ->
-      case maps:find({Time, MeasurementType}, Station#station.measurements) of
-        {ok, _} ->
-          {error,
-            "Cannot add another measurement with the same location, time and type"};
-        error ->
-          {ok, add_value_no_check(
-            Monitor, Station, Time, MeasurementType, Value)}
-      end;
-    error ->
-      {error, "Cannot add measurement to a non-existent station"}
-  end.
+  add_value(Monitor, Name, Time, MeasurementType, Value, {ok, Name}).
+
+add_value(Monitor, _, Time, MeasurementType, Value, {ok, StationName}) ->
+  {ok, Station} = maps:find(StationName, Monitor#monitor.stations),
+  add_value(Monitor, StationName, Time, MeasurementType, Value, Station,
+    maps:find({Time, MeasurementType}, Station#station.measurements));
+add_value(_, _, _, _, _, _) ->
+  {error, "Cannot add measurement to a non-existent station"}.
+
+add_value(_, _, _, _, _, _, {ok, _}) ->
+  {error, "Cannot add another measurement with the same location, time and type"};
+add_value(Monitor, _, Time, MeasurementType, Value, Station, error) ->
+  {ok, add_value_no_check(Monitor, Station, Time, MeasurementType, Value)}.
 
 add_value_no_check(Monitor, Station, Time, MeasurementType, Value) ->
   Monitor#monitor{
@@ -98,33 +86,21 @@ add_value_no_check(Monitor, Station, Time, MeasurementType, Value) ->
 remove_value(Monitor, {_, _} = Location, Time, MeasurementType)
   when is_tuple(Time),
   is_atom(MeasurementType) ->
-  case maps:find(Location, Monitor#monitor.locationToName) of
-    {ok, Name} ->
-      {ok, Station} = maps:find(Name, Monitor#monitor.stations),
-      case maps:find(Time, Station#station.measurements) of
-        {ok, _} ->
-          {ok, remove_value_no_check(Monitor, Station, Time, MeasurementType)};
-        error ->
-          {ok, Monitor}
-      end;
-    error ->
-      {ok, Monitor}
-  end;
-
+  remove_value(Monitor, Location, Time, MeasurementType,
+    maps:find(Location, Monitor#monitor.locationToName));
 remove_value(Monitor, Name, Time, MeasurementType)
   when is_tuple(Time),
   is_atom(MeasurementType) ->
-  case maps:find(Name, Monitor#monitor.stations) of
-    {ok, Station} ->
-      case maps:find({Time, MeasurementType}, Station#station.measurements) of
-        {ok, _} ->
-          {ok, remove_value_no_check(Monitor, Station, Time, MeasurementType)};
-        error ->
-          {ok, Monitor}
-      end;
-    error ->
-      {error, Monitor}
-  end.
+  remove_value(Monitor, Name, Time, MeasurementType, {ok, Name}).
+
+remove_value(Monitor, _, Time, MeasurementType, {ok, Name}) ->
+  remove_value(Monitor, Name, Time, MeasurementType, {ok, Name},
+    maps:find(Name, Monitor#monitor.stations));
+remove_value(Monitor, _, _, _, error) -> {ok, Monitor}.
+
+remove_value(Monitor, _, Time, MeasurementType, _, {ok, Station}) ->
+  {ok, remove_value_no_check(Monitor, Station, Time, MeasurementType)};
+remove_value(Monitor, _, _, _, _, error) -> {ok, Monitor}.
 
 remove_value_no_check(Monitor, Station, Time, MeasurementType) ->
   Monitor#monitor{
@@ -137,12 +113,10 @@ remove_value_no_check(Monitor, Station, Time, MeasurementType) ->
       Monitor#monitor.stations)}.
 
 get_one_value(MeasurementType, Time, Station) ->
-  case maps:find({Time, MeasurementType}, Station#station.measurements) of
-    {ok, #measurement{value = Value}} ->
-      Value;
-    error ->
-      {error, "No value for given specs"}
-  end.
+  value(maps:find({Time, MeasurementType}, Station#station.measurements)).
+
+value({ok, #measurement{value = Value}}) -> Value;
+value(_) -> {error, "No value for given specs"}.
 
 get_station_mean(MeasurementType, Station) when is_atom(MeasurementType) ->
   {ElementsCount, TotalSum} =
@@ -194,13 +168,8 @@ get_station_daily_data_count(Station) ->
 
 %% helpers
 
-datetime_to_day(Date) ->
-  {{_, _, Day}, {_, _, _}} = Date,
-  Day.
-
-datetime_to_date(DateTime) ->
-  {Date, {_, _, _}} = DateTime,
-  Date.
+datetime_to_day(Date) -> {{_, _, Day}, {_, _, _}} = Date, Day.
+datetime_to_date(DateTime) -> {Date, {_, _, _}} = DateTime, Date.
 
 group_by(F, L) ->
   lists:foldr(
@@ -213,8 +182,5 @@ group_by(F, L) ->
     #{},
     [{F(X), X} || X <- L]).
 
-safe_division(A, B) when is_number(A), is_number(B)->
-  case B of
-    0 -> 0;
-    _ -> A / B
-  end.
+safe_division(A, 0) when is_number(A) -> 0;
+safe_division(A, B) when is_number(A), is_number(B) -> A / B.
