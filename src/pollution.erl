@@ -32,7 +32,6 @@ add_station(Monitor, Name, {_, _} = Location) ->
   add_station(not NameUsed and not LocationUsed, Monitor, Name, Location);
 add_station(_, _, _) ->
   {error, "Wrong location format"}.
-
 add_station(true, Monitor, Name, Location) ->
   {ok, #monitor{
     locationToName = maps:put(Location, Name, Monitor#monitor.locationToName),
@@ -49,14 +48,16 @@ find_name(error) -> false.
 was_location_used({ok, _}) -> true;
 was_location_used(error) -> false.
 
-add_value(Monitor, {_, _} = Location, Time, MeasurementType, Value)
-  when is_tuple(Time),
-  is_atom(MeasurementType) ->
+add_value(Monitor, {_, _} = Location, Time, MeasurementType, Value) when
+  is_tuple(Time),
+  is_atom(MeasurementType)
+->
   add_value(Monitor, Location, Time, MeasurementType, Value,
     maps:find(Location, Monitor#monitor.locationToName));
-add_value(Monitor, Name, Time, MeasurementType, Value)
-  when is_tuple(Time),
-  is_atom(MeasurementType) ->
+add_value(Monitor, Name, Time, MeasurementType, Value) when
+  is_tuple(Time),
+  is_atom(MeasurementType)
+->
   add_value(Monitor, Name, Time, MeasurementType, Value, {ok, Name}).
 
 add_value(Monitor, _, Time, MeasurementType, Value, {ok, StationName}) ->
@@ -83,14 +84,16 @@ add_value_no_check(Monitor, Station, Time, MeasurementType, Value) ->
         Station#station.measurements)},
       Monitor#monitor.stations)}.
 
-remove_value(Monitor, {_, _} = Location, Time, MeasurementType)
-  when is_tuple(Time),
-  is_atom(MeasurementType) ->
+remove_value(Monitor, {_, _} = Location, Time, MeasurementType) when
+  is_tuple(Time),
+  is_atom(MeasurementType)
+->
   remove_value(Monitor, Location, Time, MeasurementType,
     maps:find(Location, Monitor#monitor.locationToName));
-remove_value(Monitor, Name, Time, MeasurementType)
-  when is_tuple(Time),
-  is_atom(MeasurementType) ->
+remove_value(Monitor, Name, Time, MeasurementType) when
+  is_tuple(Time),
+  is_atom(MeasurementType)
+->
   remove_value(Monitor, Name, Time, MeasurementType, {ok, Name}).
 
 remove_value(Monitor, _, Time, MeasurementType, {ok, Name}) ->
