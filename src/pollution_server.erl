@@ -1,7 +1,9 @@
 -module(pollution_server).
 -export([
-  start/0,
+  start_link/0,
+  init/0,
   stop/0,
+  crash/0,
   add_station/2,
   add_value/4,
   remove_value/3,
@@ -11,14 +13,14 @@
   get_daily_average_data_count/0
 ]).
 
-start() ->
-  spawn(pollution_server, init, []).
-
-init() ->
-  Monitor = pollution:create_monitor(),
-  loop(Monitor).
-
 %% API start
+
+start_link() ->
+  %% io:format("pollution_server:start()~n"),
+  spawn_link(?MODULE, init, []).
+
+stop() ->
+  handler(stop, []).
 
 add_station(Name, {_, _} = Location) ->
   handler(add_station, [Name, Location]).
@@ -41,7 +43,16 @@ get_daily_mean(MeasurementType, Day) ->
 get_daily_average_data_count() ->
   handler(get_daily_average_data_count, []).
 
+crash() ->
+  %% io:format("pollution_server:crash()~n"),
+  handler(crash, []).
+
 %% API end
+
+init() ->
+  %% io:format("pollution_server:init()~p~n", [self()]),
+  Monitor = pollution:create_monitor(),
+  loop(Monitor).
 
 handler(RequestType, Args) when is_list(Args) ->
   server ! {RequestType, self(), Args},
@@ -93,11 +104,11 @@ loop(Monitor) ->
 
     {stop, Pid, []} ->
       response(Pid, Monitor),
-      terminate()
+      terminate();
+
+    {crash, Pid, []} ->
+      response(Pid, 1 / 0)
   end.
 
 terminate() ->
   ok.
-
-stop() ->
-  handler(stop, []).
